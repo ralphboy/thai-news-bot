@@ -17,19 +17,31 @@ st.markdown("""
 <style>
     .big-font { font-size: 32px !important; font-weight: 800; color: #1a1a1a; }
     .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
-    /* 讓複製區塊明顯一點 */
     .stCode { border: 1px solid #d93025; }
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 爬蟲核心邏輯 (動態時間版) =================
+# ================= 爬蟲核心邏輯 (智慧切換版) =================
 
-def get_rss_sources(days):
+def get_rss_sources(days, custom_keyword=None):
     """
-    根據使用者選擇的天數，動態生成 RSS 連結
-    search?q=... when:{days}d ...
+    智慧切換邏輯：
+    1. 若有輸入自訂關鍵字 -> 只回傳該關鍵字的來源 (深度模式)
+    2. 若無輸入 -> 回傳預設三大來源 (廣度模式)
     """
-    return [
+    sources = []
+    
+    # === 模式 A：深度鑽研 (只搜自訂) ===
+    if custom_keyword and custom_keyword.strip():
+        clean_keyword = custom_keyword.strip().replace(" ", "+")
+        sources.append({
+            "name": f"🔍 深度追蹤: {custom_keyword}",
+            "url": f"https://news.google.com/rss/search?q={clean_keyword}+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
+        })
+        return sources
+
+    # === 模式 B：廣度掃描 (預設三大類) ===
+    sources.extend([
         {
             "name": "🇹🇭 1. 泰國整體重要新聞", 
             "url": f"https://news.google.com/rss/search?q=Thailand+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
@@ -42,54 +54,82 @@ def get_rss_sources(days):
             "name": "🇹🇼 3. 台泰關係", 
             "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+OR+%22Taiwan+companies%22+OR+%22Trade+Relations%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
         }
-    ]
+    ])
+    
+    return sources
 
-def generate_chatgpt_prompt(days_label, days_int):
-    """抓取新聞並生成 Prompt"""
+def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
+    """根據模式生成對應的 Prompt"""
     status_text = st.empty() 
     progress_bar = st.progress(0)
     
-    # 取得動態來源列表
-    sources = get_rss_sources(days_int)
+    # 取得來源列表 (程式會自動判斷要拿哪一種)
+    sources = get_rss_sources(days_int, custom_keyword)
     
-    output_text = f"""
+    # === 動態生成 AI 指令 (根據是否有關鍵字) ===
+    if custom_keyword and custom_keyword.strip():
+        # [指令 A] 針對特定主題分析
+        instruction_prompt = f"""
+請扮演一位資深的「產業分析師」。
+以下是我針對關鍵字【{custom_keyword}】抓取的{days_label}新聞資料。
+
+請閱讀這些新聞，幫我撰寫一份「深度主題分析報告」：
+
+### 1. 🔍 重點摘要 (Executive Summary)
+   - 請總結關於「{custom_keyword}」發生的最重要事件。
+
+### 2. 📈 市場與商業影響
+   - 這些新聞對該公司或該產業的供應鏈有何具體影響？
+   - 是否有擴廠、併購、或政策變動的訊號？
+
+### 3. ⚠️ 潛在機會與風險
+   - 對於投資者或競爭對手來說，有什麼值得注意的機會或風險？
+
+(若新聞內容與該關鍵字關聯度低，請明確指出「雜訊過多，無實質進展」。)
+"""
+    else:
+        # [指令 B] 原本的三大方向分析
+        instruction_prompt = f"""
 請扮演一位資深的「東南亞產經分析師」。
 以下是我透過程式抓取的【{days_label} 泰國 PCB 與電子產業新聞資料庫】。
 
-請閱讀這些新聞標題與來源，幫我按照以下三個方向進行「深度整理與分析」：
+請閱讀這些新聞，幫我按照以下方向進行「深度整理與分析」：
 
 ### 1. 🇹🇭 泰國整體重要新聞
    - 重點關注：政治動態、重大經濟政策、社會安全。
-   - 請列出最具影響力的 3-5 件大事。
+   - 列出最具影響力的 3-5 件大事。
 
 ### 2. 🔌 泰國 PCB 與電子製造
-   - 重點關注：新廠設立（特別是 PCB 廠）、供應鏈移轉動態、大型投資案。
-   - 分析這對全球電子供應鏈的意義。
+   - 重點關注：新廠設立、供應鏈移轉、大型投資案。
+   - 分析對全球供應鏈的意義。
 
 ### 3. 🇹🇼 台泰關係與台商動態
-   - 重點關注：台灣企業投資、雙邊貿易、地緣政治影響。
+   - 重點關注：台灣企業投資、雙邊貿易、地緣政治。
    - 指出台商的機會與風險。
+"""
+
+    # 組合最終 Prompt
+    output_text = f"""
+{instruction_prompt}
 
 請用**繁體中文**，並以 **Markdown** 條列式輸出，風格需專業且易讀。
-若某個分類下無重大新聞，請註明「該期間無相關報導」。
 
-========= 以下是 {days_label} 新聞資料庫 ({datetime.now().strftime('%Y-%m-%d')}) =========
+========= 以下是新聞資料庫 ({datetime.now().strftime('%Y-%m-%d')}) =========
 """
     
     seen_titles = set()
     total_steps = len(sources)
     
     for i, source in enumerate(sources):
-        status_text.text(f"📡 正在掃描 ({days_label}): {source['name']} ...")
+        status_text.text(f"📡 正在掃描: {source['name']} ...")
         
-        # 增加容錯機制
         try:
             feed = feedparser.parse(source['url'])
             
             if len(feed.entries) > 0:
                 output_text += f"\n## 【{source['name']}】\n"
-                # 依據天數調整抓取數量：天數少抓少一點(15則)，天數多抓多一點(30則)
-                limit = 15 if days_int <= 3 else 30
+                # 自訂模式抓多一點(30)，預設模式抓適量(15-20)
+                limit = 30 if custom_keyword else (15 if days_int <= 3 else 25)
                 
                 for entry in feed.entries[:limit]: 
                     if entry.title in seen_titles: continue
@@ -97,12 +137,13 @@ def generate_chatgpt_prompt(days_label, days_int):
                     
                     source_name = entry.source.title if 'source' in entry else "Google News"
                     pub_date = entry.published if 'published' in entry else ""
-                    # 格式：[日期] [媒體] 標題
                     output_text += f"- [{pub_date}] [{source_name}] {entry.title}\n  連結: {entry.link}\n"
+            else:
+                output_text += f"\n## 【{source['name']}】\n(無相關新聞)\n"
+
         except Exception as e:
             st.error(f"抓取錯誤: {e}")
         
-        # 更新進度條
         progress_bar.progress((i + 1) / total_steps)
         time.sleep(0.5)
 
@@ -118,17 +159,14 @@ def generate_chatgpt_prompt(days_label, days_int):
 
 st.markdown('<div class="big-font">ThaiNews.Ai 🇹🇭 戰情室</div>', unsafe_allow_html=True)
 
-# 建立分頁
 tab1, tab2 = st.tabs(["🤖 ChatGPT 懶人包 (生成器)", "📊 歷史新聞庫"])
 
-# --- Tab 1: ChatGPT 懶人包生成器 ---
+# --- Tab 1 ---
 with tab1:
     st.markdown("### 🚀 一鍵生成 ChatGPT 分析指令")
     
-    # === 新增功能：時間選擇區 ===
+    # 1. 時間選擇
     st.write("請選擇新聞抓取區間：")
-    
-    # 定義選項與對應的天數數值
     time_options = {
         "1 天 (24h)": 1,
         "3 天": 3,
@@ -136,31 +174,38 @@ with tab1:
         "2 週 (14天)": 14,
         "1 個月 (30天)": 30
     }
-    
-    # 使用橫向單選按鈕 (Radio Button)
     selected_label = st.radio(
         "選擇區間",
         options=list(time_options.keys()),
         horizontal=True,
         label_visibility="collapsed"
     )
-    
-    # 取得對應的天數整數
     days_int = time_options[selected_label]
 
-    st.info(f"準備抓取 **「過去 {selected_label}」** 的泰國產業新聞...")
+    # 2. 自訂搜尋關鍵字
+    st.markdown("---")
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        custom_keyword = st.text_input(
+            "🔍 自訂搜尋關鍵字 (選填)", 
+            placeholder="例如: \"Delta Electronics\" -Airline"
+        )
+    with col2:
+        st.write("") 
+        st.caption("⚠️ 若輸入此欄位，系統將**只搜尋此關鍵字**，不抓取預設的三大類別。")
+
+    st.markdown("---")
     
-    # 按鈕觸發
-    if st.button(f"開始抓取 ({selected_label})", type="primary"):
-        with st.spinner(f"正在連線至 Google News (範圍: {selected_label})..."):
-            prompt_content = generate_chatgpt_prompt(selected_label, days_int)
-            
+    # 按鈕文字會根據模式改變
+    btn_text = f"開始搜尋: {custom_keyword}" if custom_keyword else f"開始抓取預設三大新聞 ({selected_label})"
+    
+    if st.button(btn_text, type="primary"):
+        with st.spinner(f"正在全網搜索..."):
+            prompt_content = generate_chatgpt_prompt(selected_label, days_int, custom_keyword)
             st.success("🎉 生成成功！")
-            st.markdown("請點擊下方黑色區塊**右上角的 📄 小圖示**，即可全選複製，然後貼給 ChatGPT。")
-            
             st.code(prompt_content, language="markdown")
 
-# --- Tab 2: 歷史新聞庫 ---
+# --- Tab 2 ---
 with tab2:
     st.markdown("### 📂 本地資料庫檢視")
     if os.path.exists('news_data.json'):
