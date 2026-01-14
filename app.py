@@ -5,37 +5,191 @@ from datetime import datetime, timedelta
 import json
 import os
 
-# ================= 頁面設定 =================
+# ================= 1. 頁面全域設定 =================
 st.set_page_config(
     page_title="ThaiNews.Ai | 戰情室", 
     page_icon="🇹🇭", 
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
-# ================= CSS 美化 =================
+# ================= 2. UI/UX Pro Max - CSS 魔改區 =================
 st.markdown("""
 <style>
-    .big-font { font-size: 32px !important; font-weight: 800; color: #1a1a1a; }
-    .stButton>button { width: 100%; border-radius: 5px; height: 3em; font-weight: bold; }
-    .stCode { border: 1px solid #d93025; }
+    /* 引入 Google Fonts: Inter (現代科技感字體) */
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap');
+
+    /* 全站基礎設定：深藍儀表板背景 */
+    html, body, [class*="css"] {
+        font-family: 'Inter', sans-serif;
+        background-color: #020617; /* 深夜藍 */
+        color: #e5e7eb;
+    }
+
+    /* 頂部 Header 漸層背景卡片：深藍 x 泰皇金 */
+    .header-container {
+        background: radial-gradient(circle at top left, #fbbf24 0%, #0f172a 45%, #020617 100%);
+        padding: 32px 30px;
+        border-radius: 18px;
+        color: #f9fafb;
+        box-shadow: 0 18px 45px rgba(0,0,0,0.6);
+        margin-bottom: 26px;
+        border: 1px solid rgba(248, 250, 252, 0.08);
+    }
+    .header-title {
+        font-size: 40px;
+        font-weight: 800;
+        margin: 0;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        background: linear-gradient(to right, #fef9c3, #facc15, #eab308);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+    .header-subtitle {
+        font-size: 15px;
+        color: #c7d2fe;
+        margin-top: 10px;
+        font-weight: 400;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+    }
+
+    /* 主操作卡片：深藍玻璃卡片 */
+    .control-card {
+        background: radial-gradient(circle at top left, rgba(248, 250, 252, 0.04), rgba(15, 23, 42, 0.96));
+        padding: 24px 26px;
+        border-radius: 18px;
+        box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+        border: 1px solid rgba(148, 163, 184, 0.45);
+        margin-bottom: 25px;
+        backdrop-filter: blur(18px);
+    }
+
+    /* 自訂輸入框美化：深藍邊框 + 金色聚焦 */
+    .stTextInput > div > div > input {
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        background-color: rgba(15, 23, 42, 0.85);
+        padding: 10px 18px;
+        font-size: 15px;
+        color: #e5e7eb;
+        transition: all 0.2s ease;
+    }
+    .stTextInput > div > div > input::placeholder {
+        color: rgba(148, 163, 184, 0.8);
+    }
+    .stTextInput > div > div > input:focus {
+        border-color: #facc15;
+        box-shadow: 0 0 0 1px rgba(250, 204, 21, 0.65);
+    }
+
+    /* Pro Max 按鈕：深藍 x 金色 */
+    .stButton > button {
+        background: linear-gradient(135deg, #0f172a 0%, #1d283a 35%, #facc15 100%);
+        color: #020617;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 999px;
+        font-weight: 700;
+        font-size: 15px;
+        width: 100%;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        box-shadow: 0 14px 32px rgba(15, 23, 42, 0.9);
+        transition: transform 0.08s ease-out, box-shadow 0.15s ease-out, filter 0.15s ease-out;
+    }
+    .stButton > button:hover {
+        filter: brightness(1.08);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 1);
+        transform: translateY(-1px);
+        color: #020617;
+    }
+    .stButton > button:active {
+        transform: translateY(1px);
+        box-shadow: 0 10px 20px rgba(15, 23, 42, 0.9);
+    }
+
+    /* Radio Button 儀表板膠囊樣式 */
+    .stRadio > div {
+        background: rgba(15, 23, 42, 0.9);
+        padding: 10px;
+        border-radius: 999px;
+        display: flex;
+        justify-content: space-between;
+        border: 1px solid rgba(148, 163, 184, 0.7);
+    }
+
+    /* st.metric 儀表板卡片樣式 */
+    div[data-testid="stMetric"] {
+        background: radial-gradient(circle at top left, rgba(250, 204, 21, 0.22), rgba(15, 23, 42, 0.98));
+        padding: 16px 18px;
+        border-radius: 16px;
+        border: 1px solid rgba(250, 204, 21, 0.55);
+        box-shadow: 0 16px 40px rgba(0,0,0,0.8);
+        color: #e5e7eb;
+    }
+    div[data-testid="stMetric"] > label {
+        color: rgba(226, 232, 240, 0.9);
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+    }
+    div[data-testid="stMetric"] > div {
+        color: #facc15;
+        font-size: 1.4rem;
+        font-weight: 800;
+    }
+
+    /* 結果代碼區塊美化：深藍框 + 光暈 */
+    .stCode {
+        border-radius: 16px;
+        border: 1px solid rgba(148, 163, 184, 0.6);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.95);
+        background-color: #020617;
+    }
+
+    /* 新聞卡片樣式：深藍卡片 + 金色左框 */
+    .news-card {
+        background: radial-gradient(circle at top left, rgba(15, 23, 42, 0.9), rgba(15, 23, 42, 1));
+        padding: 18px 20px;
+        margin-bottom: 14px;
+        border-radius: 14px;
+        border-left: 4px solid #facc15;
+        box-shadow: 0 14px 30px rgba(0,0,0,0.8);
+        transition: transform 0.18s ease-out, border-color 0.18s ease-out, box-shadow 0.18s ease-out;
+    }
+    .news-card:hover {
+        transform: translateX(4px) translateY(-1px);
+        border-left-color: #fde68a;
+        box-shadow: 0 18px 40px rgba(0,0,0,1);
+    }
+    .news-date { font-size: 11px; color: #9ca3af; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.12em; }
+    .news-source { font-weight: 700; color: #facc15; font-size: 12px; }
+    .news-title { font-size: 17px; font-weight: 600; color: #e5e7eb; text-decoration: none; display:block; margin-top:4px;}
+    .news-title:hover { color: #fde68a; text-decoration: underline; }
+
+    /* 隱藏預設 Footer / MainMenu */
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    
 </style>
 """, unsafe_allow_html=True)
 
-# ================= 爬蟲核心邏輯 (智慧切換版) =================
+# ================= 3. 爬蟲核心邏輯 =================
 
 def get_rss_sources(days, custom_keyword=None):
-    """
-    智慧切換邏輯：
-    1. 若有輸入自訂關鍵字 -> 只回傳該關鍵字的來源 (深度模式)
-    2. 若無輸入 -> 回傳預設三大來源 (廣度模式)
-    """
     sources = []
     
     # === 模式 A：深度鑽研 (只搜自訂) ===
     if custom_keyword and custom_keyword.strip():
-        clean_keyword = custom_keyword.strip().replace(" ", "+")
+        # 自動補上 Thailand 以避免抓到無關公司 (如 Delta Airlines)
+        # 除非使用者已經打在裡面了
+        search_term = custom_keyword.strip()
+        
+        clean_keyword = search_term.replace(" ", "+")
         sources.append({
-            "name": f"🔍 深度追蹤: {custom_keyword}",
+            "name": f"🔍 深度追蹤: {search_term}",
             "url": f"https://news.google.com/rss/search?q={clean_keyword}+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
         })
         return sources
@@ -55,20 +209,16 @@ def get_rss_sources(days, custom_keyword=None):
             "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+OR+%22Taiwan+companies%22+OR+%22Trade+Relations%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
         }
     ])
-    
     return sources
 
 def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
-    """根據模式生成對應的 Prompt"""
     status_text = st.empty() 
     progress_bar = st.progress(0)
     
-    # 取得來源列表 (程式會自動判斷要拿哪一種)
     sources = get_rss_sources(days_int, custom_keyword)
     
-    # === 動態生成 AI 指令 (根據是否有關鍵字) ===
+    # 動態生成 Prompt
     if custom_keyword and custom_keyword.strip():
-        # [指令 A] 針對特定主題分析
         instruction_prompt = f"""
 請扮演一位資深的「產業分析師」。
 以下是我針對關鍵字【{custom_keyword}】抓取的{days_label}新聞資料。
@@ -88,7 +238,6 @@ def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
 (若新聞內容與該關鍵字關聯度低，請明確指出「雜訊過多，無實質進展」。)
 """
     else:
-        # [指令 B] 原本的三大方向分析
         instruction_prompt = f"""
 請扮演一位資深的「東南亞產經分析師」。
 以下是我透過程式抓取的【{days_label} 泰國 PCB 與電子產業新聞資料庫】。
@@ -108,7 +257,6 @@ def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
    - 指出台商的機會與風險。
 """
 
-    # 組合最終 Prompt
     output_text = f"""
 {instruction_prompt}
 
@@ -128,7 +276,6 @@ def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
             
             if len(feed.entries) > 0:
                 output_text += f"\n## 【{source['name']}】\n"
-                # 自訂模式抓多一點(30)，預設模式抓適量(15-20)
                 limit = 30 if custom_keyword else (15 if days_int <= 3 else 25)
                 
                 for entry in feed.entries[:limit]: 
@@ -148,70 +295,122 @@ def generate_chatgpt_prompt(days_label, days_int, custom_keyword):
         time.sleep(0.5)
 
     output_text += "\n========= 資料結束 ========="
-    status_text.text("✅ 抓取完成！請點擊下方區塊右上角的複製按鈕。")
+    status_text.success("✅ 抓取完成！請點擊下方區塊右上角的複製按鈕。")
     time.sleep(1)
     status_text.empty()
     progress_bar.empty()
     
     return output_text
 
-# ================= 網頁主程式 =================
+# ================= 4. 網頁主程式 (UI 佈局) =================
 
-st.markdown('<div class="big-font">ThaiNews.Ai 🇹🇭 戰情室</div>', unsafe_allow_html=True)
+# --- Header 區塊 ---
+st.markdown("""
+<div class="header-container">
+    <p class="header-title">ThaiNews.Ai 🇹🇭 戰情室</p>
+    <p class="header-subtitle">AI 驅動的泰國電子產業與台商動態追蹤系統</p>
+</div>
+""", unsafe_allow_html=True)
 
+# 建立分頁
 tab1, tab2 = st.tabs(["🤖 ChatGPT 懶人包 (生成器)", "📊 歷史新聞庫"])
 
-# --- Tab 1 ---
+# --- Tab 1: 生成器 ---
 with tab1:
-    st.markdown("### 🚀 一鍵生成 ChatGPT 分析指令")
-    
-    # 1. 時間選擇
-    st.write("請選擇新聞抓取區間：")
-    time_options = {
-        "1 天 (24h)": 1,
-        "3 天": 3,
-        "1 週 (7天)": 7,
-        "2 週 (14天)": 14,
-        "1 個月 (30天)": 30
-    }
-    selected_label = st.radio(
-        "選擇區間",
-        options=list(time_options.keys()),
-        horizontal=True,
-        label_visibility="collapsed"
-    )
-    days_int = time_options[selected_label]
-
-    # 2. 自訂搜尋關鍵字
-    st.markdown("---")
-    col1, col2 = st.columns([3, 1])
-    with col1:
-        custom_keyword = st.text_input(
-            "🔍 自訂搜尋關鍵字 (選填)", 
-            placeholder="例如: \"Delta Electronics\" -Airline"
+    # 使用 Container 建立白色卡片區塊
+    with st.container():
+        st.markdown('<div class="control-card">', unsafe_allow_html=True)
+        st.markdown("### 🎯 戰情儀表板設定")
+        
+        # 1. 兩欄排版：左側輸入、右側說明
+        left_col, right_col = st.columns([2, 1])
+        with left_col:
+            custom_keyword = st.text_input(
+                "🔍 自訂搜尋關鍵字 (選填，輸入英文公司名)", 
+                placeholder='例如: "Delta Electronics" Thailand, CP Group...',
+                help="若輸入此欄，系統將切換為「深度鑽研模式」，只搜尋此關鍵字。"
+            )
+        with right_col:
+            st.markdown(
+                "##### 戰情模式說明\n"
+                "- 未輸入時：系統自動進行 **泰國整體 + PCB + 台泰關係** 的廣度掃描。\n"
+                "- 有輸入關鍵字：啟用 **深度鑽研模式**，專注追蹤單一主題。"
+            )
+        
+        # 2. 時間選擇
+        st.write("⏱️ 選擇時間區間：")
+        time_options = {
+            "24H (快訊)": 1,
+            "3 天": 3,
+            "1 週": 7,
+            "2 週": 14,
+            "1 個月": 30
+        }
+        
+        selected_label = st.radio(
+            "選擇區間",
+            options=list(time_options.keys()),
+            horizontal=True,
+            label_visibility="collapsed"
         )
-    with col2:
-        st.write("") 
-        st.caption("⚠️ 若輸入此欄位，系統將**只搜尋此關鍵字**，不抓取預設的三大類別。")
+        days_int = time_options[selected_label]
 
-    st.markdown("---")
-    
-    # 按鈕文字會根據模式改變
-    btn_text = f"開始搜尋: {custom_keyword}" if custom_keyword else f"開始抓取預設三大新聞 ({selected_label})"
-    
-    if st.button(btn_text, type="primary"):
-        with st.spinner(f"正在全網搜索..."):
-            prompt_content = generate_chatgpt_prompt(selected_label, days_int, custom_keyword)
-            st.success("🎉 生成成功！")
-            st.code(prompt_content, language="markdown")
+        # 3. 儀表板指標列（使用 st.columns + st.metric）
+        metric_col1, metric_col2, metric_col3 = st.columns(3)
+        with metric_col1:
+            st.metric("模式", "深度鑽研" if custom_keyword else "廣度掃描")
+        with metric_col2:
+            st.metric("時間範圍", selected_label)
+        with metric_col3:
+            st.metric("搜尋來源數", len(get_rss_sources(days_int, custom_keyword)))
+        
+        st.markdown("<br>", unsafe_allow_html=True)  # 增加一點間距
 
-# --- Tab 2 ---
+        # 4. 動態按鈕文字
+        btn_text = f"🚀 啟動 AI 戰情搜索 (目標: {custom_keyword})" if custom_keyword else f"🚀 啟動全網掃描 (範圍: {selected_label})"
+        
+        # 5. 執行按鈕
+        if st.button(btn_text, type="primary"):
+            st.markdown('</div>', unsafe_allow_html=True) # 結束卡片 div
+            
+            # 開始執行 (這部分會顯示在卡片下方)
+            with st.spinner(f"正在連線 Google News 全球節點..."):
+                prompt_content = generate_chatgpt_prompt(selected_label, days_int, custom_keyword)
+                
+                # 結果顯示區
+                st.markdown("### ✅ 生成結果 (請點擊右上角複製)")
+                st.code(prompt_content, language="markdown")
+        else:
+            st.markdown('</div>', unsafe_allow_html=True) # 結束卡片 div
+
+# --- Tab 2: 歷史資料 ---
 with tab2:
-    st.markdown("### 📂 本地資料庫檢視")
     if os.path.exists('news_data.json'):
         with open('news_data.json', 'r', encoding='utf-8') as f:
             data = json.load(f)
-        st.write(f"上次更新: {data.get('timestamp', '未知')}")
-        st.json(data.get('news_list', []))
+        
+        st.markdown(f"**上次更新時間:** {data.get('timestamp', '未知')}")
+        
+        # 把 JSON 轉成漂亮的卡片列表
+        news_list = data.get('news_list', [])
+        for news in news_list:
+            title = news.get('title')
+            link = news.get('link')
+            source = news.get('source')
+            date = news.get('date')
+            
+            st.markdown(f"""
+            <div class="news-card">
+                <div class="news-date">{date} • {source}</div>
+                <a href="{link}" target="_blank" class="news-title">{title}</a>
+            </div>
+            """, unsafe_allow_html=True)
     else:
-        st.warning("目前沒有歷史存檔。")
+        st.info("📂 目前沒有本地歷史存檔，請先執行搜尋。")
+
+# 底部版權宣告
+st.markdown("""
+<div style="text-align: center; color: #aaa; padding: 20px; font-size: 12px;">
+    Powered by Google News & OpenAI • Design by UI/UX Pro Max
+</div>
+""", unsafe_allow_html=True)
