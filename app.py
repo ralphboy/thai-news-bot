@@ -1,7 +1,8 @@
 import streamlit as st
 import feedparser
 import time
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
+from email.utils import parsedate_to_datetime
 import json
 import os
 import concurrent.futures
@@ -150,6 +151,17 @@ def fetch_feed(source):
     except Exception as e:
         return source, None
 
+def is_within_date_range(published_str, days):
+    """檢查新聞發布日期是否在指定天數範圍內"""
+    if not published_str:
+        return True  # 無日期資訊則保留
+    try:
+        pub_date = parsedate_to_datetime(published_str)
+        cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+        return pub_date >= cutoff
+    except Exception:
+        return True  # 解析失敗則保留
+
 def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=None):
     status_text = st.empty() 
     progress_bar = st.progress(0)
@@ -197,11 +209,14 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
                 # 自訂搜尋不設限，預設限制 30 篇
                 limit = len(feed.entries) if search_mode == "custom" else 30
                 
-                for entry in feed.entries[:limit]: 
+                for entry in feed.entries[:limit]:
                     if entry.title in seen_titles: continue
+                    pub_date = entry.published if 'published' in entry else ""
+                    # 過濾超出時間範圍的新聞
+                    if not is_within_date_range(pub_date, days_int):
+                        continue
                     seen_titles.add(entry.title)
                     source_name = entry.source.title if 'source' in entry else "Google News"
-                    pub_date = entry.published if 'published' in entry else ""
                     output_text += f"- [{pub_date}] [{source_name}] {entry.title}\n  連結: {entry.link}\n"
                     news_items_for_json.append({
                         "title": entry.title, "link": entry.link, "date": pub_date,
