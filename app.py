@@ -112,7 +112,9 @@ def get_rss_sources(days, mode="all", custom_keyword=None):
     # 使用 after:/before: 日期參數取代 when:Xd，過濾更精確
     date_after = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
     date_before = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-    date_filter = f"after:{date_after}+before:{date_before}"
+    # 排除聚合轉載平台（會將舊文以新日期重新上架，造成時間範圍失準）
+    exclude_sites = "-site:msn.com+-site:aol.com"
+    date_filter = f"after:{date_after}+before:{date_before}+{exclude_sites}"
 
     # 自訂搜尋模式
     if mode == "custom" and custom_keyword:
