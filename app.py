@@ -105,43 +105,47 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 def get_rss_sources(days, mode="all", custom_keyword=None):
     """
     產生 RSS 來源列表
-    :param days: 天數 (int) -> 這裡就是 traceback 報錯的地方，必須確保參數名為 days
+    :param days: 天數 (int)
     """
     sources = []
-    
+
+    # 使用 after:/before: 日期參數取代 when:Xd，過濾更精確
+    date_after = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+    date_before = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+    date_filter = f"after:{date_after}+before:{date_before}"
+
     # 自訂搜尋模式
     if mode == "custom" and custom_keyword:
         clean_keyword = custom_keyword.strip().replace(" ", "+")
         sources.append({
             "name": f"🔍 深度追蹤: {custom_keyword} (中)",
-            "url": f"https://news.google.com/rss/search?q={clean_keyword}+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
         })
         sources.append({
             "name": f"🔍 深度追蹤: {custom_keyword} (EN)",
-            "url": f"https://news.google.com/rss/search?q={clean_keyword}+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"
+            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"
         })
         return sources
 
     # 預設模式
     if mode == "macro":
         sources.extend([
-            {"name": "🇹🇭 泰國整體 (中)", "url": f"https://news.google.com/rss/search?q=泰國+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🇹🇭 泰國整體 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"},
-            {"name": "🇹🇼 台泰關係 (中)", "url": f"https://news.google.com/rss/search?q=泰國+台灣+OR+%22台商%22+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🇹🇼 台泰關係 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"}
+            {"name": "🇹🇭 泰國整體 (中)", "url": f"https://news.google.com/rss/search?q=泰國+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": "🇹🇭 泰國整體 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"},
+            {"name": "🇹🇼 台泰關係 (中)", "url": f"https://news.google.com/rss/search?q=泰國+台灣+OR+%22台商%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": "🇹🇼 台泰關係 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
         ])
     elif mode == "industry":
         sources.extend([
-            {"name": "🔌 PCB製造 (中)", "url": f"https://news.google.com/rss/search?q=泰國+%22PCB%22+OR+%22印刷電路板%22+OR+%22電子製造%22+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🔌 PCB製造 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+%22printed+circuit+board%22+OR+%22PCB+manufacturing%22+OR+%22electronics+manufacturing%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"}
+            {"name": "🔌 PCB製造 (中)", "url": f"https://news.google.com/rss/search?q=泰國+%22PCB%22+OR+%22印刷電路板%22+OR+%22電子製造%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": "🔌 PCB製造 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+%22printed+circuit+board%22+OR+%22PCB+manufacturing%22+OR+%22electronics+manufacturing%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
         ])
     elif mode == "vip":
-        # 使用全域變數 VIP_QUERY_CN/EN
         sources.extend([
-            {"name": "🏢 台商動態 (中)", "url": f"https://news.google.com/rss/search?q=泰國+OR+{VIP_QUERY_CN}+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🏢 台商動態 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+PCB+OR+{VIP_QUERY_EN}+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"}
+            {"name": "🏢 台商動態 (中)", "url": f"https://news.google.com/rss/search?q=泰國+OR+{VIP_QUERY_CN}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": "🏢 台商動態 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+PCB+OR+{VIP_QUERY_EN}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
         ])
-    
+
     return sources
 
 def fetch_feed(source):
