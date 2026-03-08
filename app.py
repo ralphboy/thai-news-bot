@@ -6,6 +6,7 @@ import json
 import os
 import concurrent.futures
 import html
+import fcntl
 
 # ================= 1. 頁面設定 (必須放第一行) =================
 st.set_page_config(
@@ -130,8 +131,8 @@ def get_rss_sources(days, mode="all", custom_keyword=None):
         ])
     elif mode == "industry":
         sources.extend([
-            {"name": "🔌 PCB製造 (中)", "url": f"https://news.google.com/rss/search?q=泰國+PCB+OR+%22電子製造%22+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🔌 PCB製造 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+PCB+OR+%22Electronics+Manufacturing%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"}
+            {"name": "🔌 PCB製造 (中)", "url": f"https://news.google.com/rss/search?q=泰國+%22PCB%22+OR+%22印刷電路板%22+OR+%22電子製造%22+when:{days}d&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": "🔌 PCB製造 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+%22printed+circuit+board%22+OR+%22PCB+manufacturing%22+OR+%22electronics+manufacturing%22+when:{days}d&hl=en-TH&gl=TH&ceid=TH:en"}
         ])
     elif mode == "vip":
         # 使用全域變數 VIP_QUERY_CN/EN
@@ -211,31 +212,33 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
 
     output_text += "\n========= 資料結束 ========="
     
-    # 累積歷史資料邏輯
+    # 累積歷史資料邏輯（加檔案鎖防止並發寫入損毀）
+    MAX_NEWS_ITEMS = 5000  # 歷史上限，避免無限增長
     try:
-        existing_data = {"news_list": []}
-        if os.path.exists('news_data.json'):
-            with open('news_data.json', 'r', encoding='utf-8') as f:
-                try:
-                    existing_data = json.load(f)
-                except json.JSONDecodeError:
-                    pass # 檔案損毀則使用空列表
-        
-        # 建立現有連結集合以過濾重複
-        existing_links = set(item['link'] for item in existing_data.get('news_list', []))
-        
-        new_items_added = 0
-        for item in news_items_for_json:
-            if item['link'] not in existing_links:
-                existing_data['news_list'].insert(0, item) # 新的放前面
-                existing_links.add(item['link'])
-                new_items_added += 1
-        
-        existing_data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        
-        with open('news_data.json', 'w', encoding='utf-8') as f:
+        with open('news_data.json', 'a+', encoding='utf-8') as f:
+            fcntl.flock(f, fcntl.LOCK_EX)
+            try:
+                f.seek(0)
+                content = f.read()
+                existing_data = json.loads(content) if content.strip() else {"news_list": []}
+            except json.JSONDecodeError:
+                existing_data = {"news_list": []}
+
+            # 建立現有連結集合以過濾重複
+            existing_links = set(item['link'] for item in existing_data.get('news_list', []))
+
+            for item in news_items_for_json:
+                if item['link'] not in existing_links:
+                    existing_data['news_list'].insert(0, item)
+                    existing_links.add(item['link'])
+
+            # 超過上限則裁切舊資料
+            existing_data['news_list'] = existing_data['news_list'][:MAX_NEWS_ITEMS]
+            existing_data['timestamp'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+            f.seek(0)
+            f.truncate()
             json.dump(existing_data, f, ensure_ascii=False, indent=4)
-            
     except Exception as e:
         print(f"存檔失敗: {e}")
 
@@ -259,10 +262,11 @@ def display_results(prompt, news_list):
             # Security fix: Escape HTML special characters
             safe_title = html.escape(news['title'])
             safe_source = html.escape(news['source'])
-            
+            safe_link = html.escape(news.get('link', '#'))
+
             st.markdown(f'''
             <div class="news-card">
-                <a href="{news['link']}" target="_blank" class="news-title">{safe_title}</a>
+                <a href="{safe_link}" target="_blank" class="news-title">{safe_title}</a>
                 <div class="news-meta">{news['date']} • {safe_source} <span class="news-tag">{cat}</span></div>
             </div>
             ''', unsafe_allow_html=True)
@@ -347,6 +351,13 @@ with tab1:
         s_type = st.session_state.get('search_type')
         s_kw = st.session_state.get('search_keyword')
 
+        # 搜尋模式對應的 spinner 文字
+        SPINNER_MAP = {
+            "macro": "正在掃描泰國大選、經貿與台泰新聞...",
+            "industry": "正在掃描 PCB 與電子供應鏈新聞...",
+            "vip": "正在掃描重點台商動態...",
+        }
+
         # 尚未搜尋時的歡迎畫面
         if not s_type:
             st.info("👈 請從左側選擇主題或輸入關鍵字開始。")
@@ -355,31 +366,19 @@ with tab1:
                 <strong>💡 系統說明：</strong><br>
                 1. <b>泰國政經</b>：政經局勢與台泰關係。<br>
                 2. <b>電子產業</b>：PCB、伺服器與電子製造。<br>
-                3. <b>重點台商</b>：鎖定 10 大指標台廠動態。
+                3. <b>重點台商</b>：鎖定 11 大指標台廠動態。
             </div>
             """, unsafe_allow_html=True)
-        
+
         # 執行搜尋
-        else:
-            if s_type == "custom" and s_kw:
-                with st.spinner(f"正在全網搜索 {s_kw}..."):
-                    prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "custom", s_kw)
-                    display_results(prompt, news_list)
-                    
-            elif s_type == "macro":
-                with st.spinner("正在掃描泰國大選、經貿與台泰新聞..."):
-                    prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "macro")
-                    display_results(prompt, news_list)
-                    
-            elif s_type == "industry":
-                with st.spinner("正在掃描 PCB 與電子供應鏈新聞..."):
-                    prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "industry")
-                    display_results(prompt, news_list)
-                    
-            elif s_type == "vip":
-                with st.spinner("正在掃描重點台商動態..."):
-                    prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "vip")
-                    display_results(prompt, news_list)
+        elif s_type == "custom" and s_kw:
+            with st.spinner(f"正在全網搜索 {s_kw}..."):
+                prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "custom", s_kw)
+                display_results(prompt, news_list)
+        elif s_type in SPINNER_MAP:
+            with st.spinner(SPINNER_MAP[s_type]):
+                prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, s_type)
+                display_results(prompt, news_list)
 
 with tab2:
     col_head_1, col_head_2 = st.columns([3, 1])
@@ -401,11 +400,14 @@ with tab2:
 
         if news_list:
             for news in news_list:
-                cat = news.get('category', '歷史')
+                cat = html.escape(news.get('category', '歷史'))
+                safe_title = html.escape(news['title'])
+                safe_source = html.escape(news['source'])
+                safe_link = html.escape(news.get('link', '#'))
                 st.markdown(f"""
                 <div class="news-card">
-                    <a href="{news['link']}" target="_blank" class="news-title">{news['title']}</a>
-                    <div class="news-meta">{news['date']} • {news['source']} <span class="news-tag">{cat}</span></div>
+                    <a href="{safe_link}" target="_blank" class="news-title">{safe_title}</a>
+                    <div class="news-meta">{news['date']} • {safe_source} <span class="news-tag">{cat}</span></div>
                 </div>
                 """, unsafe_allow_html=True)
         else:

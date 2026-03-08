@@ -1,2 +1,2 @@
-streamlit
-feedparser
+streamlit>=1.40.0
+feedparser>=6.0.0
