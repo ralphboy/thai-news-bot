@@ -201,12 +201,13 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         future_to_source = {executor.submit(fetch_feed, source): source for source in sources}
-        
-        completed_count = 0
-        for future in concurrent.futures.as_completed(future_to_source):
-            completed_count += 1
+
+        # 等待所有抓取完成，但按原始來源順序處理（中文在前、英文在後）
+        concurrent.futures.wait(future_to_source.keys())
+
+        for completed_count, (future, source) in enumerate(future_to_source.items(), 1):
             progress_bar.progress(completed_count / total_steps)
-            
+
             source, feed = future.result()
             
             if feed and len(feed.entries) > 0:
