@@ -124,11 +124,23 @@ RELEVANCE_KEYWORDS = {
 }
 
 
-def is_relevant(title, mode):
+def is_relevant(title, mode, custom_keyword=None):
     """檢查標題是否與搜尋模式相關（至少包含一個關鍵字）"""
+    if mode == "custom" and custom_keyword:
+        # 自訂搜尋：標題須包含使用者輸入的關鍵字（支援多字詞拆分）
+        title_lower = title.lower()
+        # 先檢查完整關鍵字，再逐字檢查（例如「泰達電」拆為「泰」「達」「電」）
+        kw = custom_keyword.strip().lower()
+        if kw in title_lower:
+            return True
+        # 拆分成單字，每個字都要出現才算相關（避免單字誤判）
+        chars = [c for c in kw if c.strip()]
+        if len(chars) >= 2 and all(c in title_lower for c in chars):
+            return True
+        return False
     keywords = RELEVANCE_KEYWORDS.get(mode)
     if not keywords:
-        return True  # custom 模式不過濾
+        return True
     title_lower = title.lower()
     return any(kw.lower() in title_lower for kw in keywords)
 
@@ -296,7 +308,7 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
                     if not is_within_date_range(pub_date, days_int):
                         continue
                     # 相關性過濾：標題須包含至少一個模式關鍵字
-                    if not is_relevant(entry.title, search_mode):
+                    if not is_relevant(entry.title, search_mode, custom_keyword):
                         continue
                     seen_titles.add(entry.title)
                     source_name = entry.source.title if 'source' in entry else "Google News"
@@ -332,10 +344,7 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
             output_text += "(無相關新聞)\n"
             continue
 
-        if search_mode == "custom":
-            limit_per_day = len(entries)  # 不限制
-        else:
-            limit_per_day = DAILY_PROMPT_LIMIT
+        limit_per_day = DAILY_PROMPT_LIMIT
 
         # 依日期分組輸出純標題
         daily_count = {}
