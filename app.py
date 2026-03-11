@@ -260,15 +260,27 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
                         "date": pub_date, "source": source_name, "category": category
                     })
 
-    # 輸出按類別分組
+    # 按日期排序（新→舊），並分離 prompt 輸出與完整資料
+    def _sort_key(item):
+        try:
+            return parsedate_to_datetime(item["date"]).timestamp()
+        except Exception:
+            return 0
+
     for category, entries in category_entries.items():
+        # 依日期排序（新→舊）
+        entries.sort(key=_sort_key, reverse=True)
+        # 全部納入顯示與儲存
+        news_items_for_json.extend(entries)
+
         output_text += f"\n## 【{category}】\n"
         if entries:
-            # 自訂搜尋不設限，預設限制 50 篇
-            limit = len(entries) if search_mode == "custom" else 50
-            for item in entries[:limit]:
+            # AI prompt 限制筆數以控制長度，但不影響新聞列表顯示
+            prompt_limit = len(entries) if search_mode == "custom" else 50
+            for item in entries[:prompt_limit]:
                 output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
-                news_items_for_json.append(item)
+            if len(entries) > prompt_limit:
+                output_text += f"  ...（另有 {len(entries) - prompt_limit} 篇，見下方新聞列表）\n"
         else:
             output_text += "(無相關新聞)\n"
 
