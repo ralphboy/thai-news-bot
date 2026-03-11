@@ -6,6 +6,7 @@ from email.utils import parsedate_to_datetime
 import json
 import os
 import concurrent.futures
+from collections import OrderedDict
 import html
 import fcntl
 
@@ -127,16 +128,22 @@ RELEVANCE_KEYWORDS = {
 def is_relevant(title, mode, custom_keyword=None):
     """檢查標題是否與搜尋模式相關（至少包含一個關鍵字）"""
     if mode == "custom" and custom_keyword:
-        # 自訂搜尋：標題須包含使用者輸入的關鍵字（支援多字詞拆分）
         title_lower = title.lower()
-        # 先檢查完整關鍵字，再逐字檢查（例如「泰達電」拆為「泰」「達」「電」）
         kw = custom_keyword.strip().lower()
+        # 完整關鍵字比對
         if kw in title_lower:
             return True
-        # 拆分成單字，每個字都要出現才算相關（避免單字誤判）
-        chars = [c for c in kw if c.strip()]
-        if len(chars) >= 2 and all(c in title_lower for c in chars):
+        # 多詞比對：以空格拆分，每個詞都須出現（如 "Delta Electronics"）
+        words = kw.split()
+        if len(words) >= 2 and all(w in title_lower for w in words):
             return True
+        # 中文逐字比對：僅對非 ASCII 字元拆分（如「泰達電」→「泰」「達」「電」）
+        cjk_chars = [c for c in kw if ord(c) > 127]
+        if len(cjk_chars) >= 2:
+            matched = sum(1 for c in cjk_chars if c in title_lower)
+            # 全部命中或至少超過一半（容許部分不符，如「泰達電」→「台達電」差一字）
+            if matched >= len(cjk_chars) or (len(cjk_chars) >= 3 and matched >= len(cjk_chars) - 1):
+                return True
         return False
     keywords = RELEVANCE_KEYWORDS.get(mode)
     if not keywords:
@@ -284,7 +291,6 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     status_text.text(f"📡 正在平行掃描 {len(sources)} 個來源（逐日拆分）...")
 
     # 按類別收集結果（去除日期後歸類）
-    from collections import OrderedDict
     category_entries = OrderedDict()
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=max_workers) as executor:
