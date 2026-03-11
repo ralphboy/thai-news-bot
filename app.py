@@ -69,22 +69,24 @@ CUSTOM_CSS = """
 </style>
 """
 
-# VIP 公司清單（中英文對照）
+# VIP 公司清單：顯示名 → {泰國中文名, 台灣母公司名, 英文名, 泰交所代碼}
+# 搜尋時以泰國當地名稱為主，同時涵蓋母公司名與英文名
 COMPANY_MAP = {
-    "台達電": "Delta Electronics",
-    "臻鼎": "Zhen Ding",
-    "欣興": "Unimicron",
-    "華通": "Compeq",
-    "金像電": "Gold Circuit Electronics",
-    "定穎": "Dynamic Holding",
-    "健鼎": "Tripod Technology",
-    "燿華": "Unitech",
-    "鴻海": "Foxconn",
-    "英業達": "Inventec",
+    "泰達電": {"thai_cn": "泰達電", "tw_cn": "台達電", "en": "Delta Electronics Thailand", "set": "DELTA"},
+    "泰鼎":   {"thai_cn": "泰鼎",   "tw_cn": "臻鼎",   "en": "Zhen Ding Technology",      "set": ""},
+    "欣興":   {"thai_cn": "欣興",   "tw_cn": "欣興",   "en": "Unimicron",                  "set": ""},
+    "華通":   {"thai_cn": "華通",   "tw_cn": "華通",   "en": "Compeq Manufacturing",        "set": ""},
+    "金像電": {"thai_cn": "金像電", "tw_cn": "金像電", "en": "Gold Circuit Electronics",     "set": ""},
+    "定穎":   {"thai_cn": "定穎",   "tw_cn": "定穎",   "en": "Dynamic Electronics",         "set": ""},
+    "健鼎":   {"thai_cn": "健鼎",   "tw_cn": "健鼎",   "en": "Tripod Technology",            "set": ""},
+    "燿華":   {"thai_cn": "燿華",   "tw_cn": "燿華",   "en": "Unitech PCB",                  "set": "UPCB"},
+    "鴻海":   {"thai_cn": "鴻海",   "tw_cn": "鴻海",   "en": "Foxconn",                      "set": ""},
+    "英業達": {"thai_cn": "英業達", "tw_cn": "英業達", "en": "Inventec",                      "set": ""},
 }
 
-VIP_COMPANIES_EN = [f'"{en}"' for en in COMPANY_MAP.values()]
-VIP_COMPANIES_CN = [f'"{cn}"' for cn in COMPANY_MAP.keys()]
+# 向下相容：產生 VIP 查詢字串
+VIP_COMPANIES_EN = [f'"{info["en"]}"' for info in COMPANY_MAP.values()]
+VIP_COMPANIES_CN = [f'"{info["tw_cn"]}"' for info in COMPANY_MAP.values()]
 
 # 預先計算好查詢字串 (避免在函式內重複計算)
 VIP_QUERY_EN = "+OR+".join([c.replace(" ", "+") for c in VIP_COMPANIES_EN])
@@ -132,11 +134,15 @@ RELEVANCE_KEYWORDS = {
 def is_relevant(title, mode, custom_keyword=None):
     """檢查標題是否與搜尋模式相關（至少包含一個關鍵字）"""
     if mode == "company" and custom_keyword:
-        # 個別台商：標題須含中文名或英文名
+        # 個別台商：標題須含任一名稱變體
         title_lower = title.lower()
-        cn_name = custom_keyword.lower()
-        en_name = COMPANY_MAP.get(custom_keyword, "").lower()
-        return cn_name in title_lower or en_name in title_lower
+        info = COMPANY_MAP.get(custom_keyword, {})
+        names = [
+            info.get("thai_cn", ""), info.get("tw_cn", ""),
+            info.get("en", ""), info.get("set", ""),
+            custom_keyword,
+        ]
+        return any(n and n.lower() in title_lower for n in names)
     if mode == "custom" and custom_keyword:
         title_lower = title.lower()
         kw = custom_keyword.strip().lower()
@@ -170,15 +176,32 @@ def _build_query_templates(mode, custom_keyword=None):
     templates = []
 
     if mode == "company" and custom_keyword:
-        # 個別台商模式：中英文名 + 泰國上下文
-        cn_name = custom_keyword
-        en_name = COMPANY_MAP.get(cn_name, cn_name)
-        cn_query = f"泰國+%22{cn_name}%22+OR+%22{en_name.replace(' ', '+')}%22"
-        en_query = f"Thailand+%22{en_name.replace(' ', '+')}%22+OR+%22{cn_name}%22"
+        # 個別台商模式：泰國當地名 + 母公司名 + 英文名
+        info = COMPANY_MAP.get(custom_keyword, {})
+        thai_cn = info.get("thai_cn", custom_keyword)
+        tw_cn = info.get("tw_cn", custom_keyword)
+        en_name = info.get("en", custom_keyword)
+        set_ticker = info.get("set", "")
+
+        # 組合所有名稱變體（去重）
+        cn_names = list(dict.fromkeys([thai_cn, tw_cn]))  # 保序去重
+        cn_or = "+OR+".join(f"%22{n}%22" for n in cn_names)
+        en_encoded = en_name.replace(" ", "+")
+
+        # 中文查詢：泰國 + (泰達電 OR 台達電 OR "Delta Electronics Thailand")
+        cn_query = f"泰國+{cn_or}+OR+%22{en_encoded}%22"
+        # 英文查詢：Thailand + "Delta Electronics Thailand" OR 泰達電 OR 台達電
+        en_query = f"Thailand+%22{en_encoded}%22+OR+{cn_or}"
+
+        # 若有泰交所代碼，額外加入
+        if set_ticker:
+            cn_query += f"+OR+%22{set_ticker}%22"
+            en_query += f"+OR+%22{set_ticker}%22"
+
         templates.extend([
-            {"name": f"🏭 {cn_name} (中)", "query": cn_query,
+            {"name": f"🏭 {custom_keyword} (中)", "query": cn_query,
              "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
-            {"name": f"🏭 {cn_name} (EN)", "query": en_query,
+            {"name": f"🏭 {custom_keyword} (EN)", "query": en_query,
              "hl": "en-TH", "gl": "TH", "ceid": "TH:en"},
         ])
     elif mode == "custom" and custom_keyword:
@@ -284,8 +307,14 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     date_range_str = f"近 {days_label}（{date_start} ~ {date_end}）"
 
     if search_mode == "company":
-        en_name = COMPANY_MAP.get(custom_keyword, custom_keyword)
-        topic_desc = f"{date_range_str} {custom_keyword}（{en_name}）泰國動態"
+        info = COMPANY_MAP.get(custom_keyword, {})
+        en_name = info.get("en", custom_keyword)
+        tw_cn = info.get("tw_cn", "")
+        label_parts = [custom_keyword]
+        if tw_cn and tw_cn != custom_keyword:
+            label_parts.append(tw_cn)
+        label_parts.append(en_name)
+        topic_desc = f"{date_range_str} {'／'.join(label_parts)} 泰國動態"
     elif search_mode == "custom":
         topic_desc = f"關鍵字【{custom_keyword}】{date_range_str}"
     elif search_mode == "macro":
@@ -583,7 +612,8 @@ with tab1:
 
         # 執行搜尋
         elif s_type == "company" and s_kw:
-            en_name = COMPANY_MAP.get(s_kw, s_kw)
+            info = COMPANY_MAP.get(s_kw, {})
+            en_name = info.get("en", s_kw)
             with st.spinner(f"正在搜尋 {s_kw}（{en_name}）泰國動態..."):
                 prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "company", s_kw)
                 display_results(prompt, news_list)
