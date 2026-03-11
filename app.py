@@ -101,6 +101,38 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # ================= 3. 爬蟲核心邏輯 =================
 
+# 各模式的相關性關鍵字（標題必須包含至少一個才保留）
+RELEVANCE_KEYWORDS = {
+    "macro": [
+        "泰國", "泰", "thailand", "thai", "bangkok", "曼谷",
+        "台泰", "台商", "東南亞", "asean", "southeast asia",
+    ],
+    "industry": [
+        "泰國", "泰", "thailand", "thai", "bangkok", "曼谷",
+        "pcb", "印刷電路板", "電路板", "circuit board",
+        "電子製造", "electronics manufacturing",
+    ],
+    "vip": [
+        "泰國", "泰", "thailand", "thai", "bangkok", "曼谷",
+        "台達電", "delta electronics", "臻鼎", "zhen ding",
+        "欣興", "unimicron", "華通", "compeq",
+        "金像電", "gold circuit", "定穎", "dynamic holding",
+        "健鼎", "tripod", "燿華", "unitech",
+        "鴻海", "foxconn", "英業達", "inventec", "garmin",
+        "pcb", "印刷電路板", "台商",
+    ],
+}
+
+
+def is_relevant(title, mode):
+    """檢查標題是否與搜尋模式相關（至少包含一個關鍵字）"""
+    keywords = RELEVANCE_KEYWORDS.get(mode)
+    if not keywords:
+        return True  # custom 模式不過濾
+    title_lower = title.lower()
+    return any(kw.lower() in title_lower for kw in keywords)
+
+
 def _build_query_templates(mode, custom_keyword=None):
     """
     依搜尋模式產生查詢模板列表。
@@ -252,6 +284,9 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
                         continue
                     pub_date = entry.published if 'published' in entry else ""
                     if not is_within_date_range(pub_date, days_int):
+                        continue
+                    # 相關性過濾：標題須包含至少一個模式關鍵字
+                    if not is_relevant(entry.title, search_mode):
                         continue
                     seen_titles.add(entry.title)
                     source_name = entry.source.title if 'source' in entry else "Google News"
