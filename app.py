@@ -507,12 +507,13 @@ with tab1:
         st.markdown('<h5 class="mobile-hidden">⚙️ 設定操作</h5>', unsafe_allow_html=True)
         
         # [狀態管理]
-        if 'days_int' not in st.session_state: st.session_state['days_int'] = 1 
+        if 'days_int' not in st.session_state: st.session_state['days_int'] = 1
         if 'search_type' not in st.session_state: st.session_state['search_type'] = None
         if 'search_keyword' not in st.session_state: st.session_state['search_keyword'] = ""
         if 'last_topic' not in st.session_state: st.session_state['last_topic'] = None
         if 'last_company' not in st.session_state: st.session_state['last_company'] = None
-        
+        if 'active_source' not in st.session_state: st.session_state['active_source'] = None  # "topic" | "company" | "custom"
+
         # [Helper] 設定搜尋模式
         def set_search(mode, keyword=""):
             st.session_state['search_type'] = mode
@@ -538,19 +539,9 @@ with tab1:
             topic_selection = st.radio("Topic", ["(請選擇)"] + list(TOPIC_MAP.keys()), label_visibility="collapsed")
             if topic_selection == "(請選擇)": topic_selection = None
         
-        if topic_selection:
-            target_mode = TOPIC_MAP[topic_selection]
-            if st.session_state.get('last_topic') != topic_selection:
-                st.session_state['last_topic'] = topic_selection
-                # 清除台商選取
-                try:
-                    st.session_state['pills_company'] = None
-                except:
-                    pass
-                st.session_state['last_company'] = None
-                set_search(target_mode)
-                st.rerun() 
-        
+        # 偵測使用者切換了哪個選擇器（比對前次值）
+        topic_changed = topic_selection and topic_selection != st.session_state.get('last_topic')
+
         # 3. 個別台商
         st.caption("3. 個別台商")
         try:
@@ -559,29 +550,26 @@ with tab1:
             company_selection = st.radio("Company", ["(請選擇)"] + list(COMPANY_MAP.keys()), label_visibility="collapsed")
             if company_selection == "(請選擇)": company_selection = None
 
-        if company_selection:
-            if st.session_state.get('last_company') != company_selection:
-                st.session_state['last_company'] = company_selection
-                # 清除主題與關鍵字選取
-                try:
-                    st.session_state['pills_topic'] = None
-                except:
-                    pass
-                st.session_state['last_topic'] = None
-                set_search("company", company_selection)
-                st.rerun()
+        company_changed = company_selection and company_selection != st.session_state.get('last_company')
+
+        # 優先處理最新的操作（避免 pills 殘留值互相覆蓋）
+        if company_changed:
+            st.session_state['last_company'] = company_selection
+            st.session_state['active_source'] = "company"
+            set_search("company", company_selection)
+            st.rerun()
+        elif topic_changed:
+            st.session_state['last_topic'] = topic_selection
+            st.session_state['active_source'] = "topic"
+            set_search(TOPIC_MAP[topic_selection])
+            st.rerun()
 
         # 4. 自訂搜尋
         st.caption("4. 關鍵字")
         def handle_custom_search():
             kw = st.session_state.kw_input
             if kw:
-                # 清除主題與台商選取
-                try:
-                    st.session_state['pills_topic'] = None
-                    st.session_state['pills_company'] = None
-                except:
-                    pass
+                st.session_state['active_source'] = "custom"
                 st.session_state['last_topic'] = None
                 st.session_state['last_company'] = None
                 set_search("custom", kw)
