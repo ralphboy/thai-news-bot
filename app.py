@@ -72,6 +72,7 @@ CUSTOM_CSS = """
 # VIP 公司清單：顯示名 → {泰國中文名, 台灣母公司名, 英文名, 泰交所代碼}
 # 搜尋時以泰國當地名稱為主，同時涵蓋母公司名與英文名
 COMPANY_MAP = {
+    # --- PCB ---
     "泰達電": {"thai_cn": "泰達電", "tw_cn": "台達電", "en": "Delta Electronics Thailand", "set": "DELTA"},
     "泰鼎":   {"thai_cn": "泰鼎",   "tw_cn": "臻鼎",   "en": "Zhen Ding Technology",      "set": ""},
     "欣興":   {"thai_cn": "欣興",   "tw_cn": "欣興",   "en": "Unimicron",                  "set": ""},
@@ -80,8 +81,21 @@ COMPANY_MAP = {
     "定穎":   {"thai_cn": "定穎",   "tw_cn": "定穎",   "en": "Dynamic Electronics",         "set": ""},
     "健鼎":   {"thai_cn": "健鼎",   "tw_cn": "健鼎",   "en": "Tripod Technology",            "set": ""},
     "燿華":   {"thai_cn": "燿華",   "tw_cn": "燿華",   "en": "Unitech PCB",                  "set": "UPCB"},
+    "敬鵬":   {"thai_cn": "敬鵬",   "tw_cn": "敬鵬",   "en": "Chin-Poon Industrial",         "set": ""},
+    "競國":   {"thai_cn": "競國",   "tw_cn": "競國",   "en": "Chin-Gou Electronic",           "set": ""},
+    "高技":   {"thai_cn": "高技",   "tw_cn": "高技",   "en": "Kao Chi Enterprises",            "set": ""},
+    # --- 伺服器/電子代工 ---
     "鴻海":   {"thai_cn": "鴻海",   "tw_cn": "鴻海",   "en": "Foxconn",                      "set": ""},
     "英業達": {"thai_cn": "英業達", "tw_cn": "英業達", "en": "Inventec",                      "set": ""},
+    "廣達":   {"thai_cn": "廣達",   "tw_cn": "廣達",   "en": "Quanta Computer",               "set": ""},
+    "群光":   {"thai_cn": "群光",   "tw_cn": "群光",   "en": "Chicony Electronics",            "set": ""},
+    # --- 散熱 ---
+    "雙鴻":   {"thai_cn": "泰鴻",   "tw_cn": "雙鴻",   "en": "Auras Technology",              "set": ""},
+    "泰碩":   {"thai_cn": "泰碩",   "tw_cn": "泰碩",   "en": "Taisol Electronics",             "set": ""},
+    # --- PCB 上游材料 ---
+    "台虹":   {"thai_cn": "台虹",   "tw_cn": "台虹",   "en": "Taiflex Scientific",             "set": ""},
+    "聯茂":   {"thai_cn": "聯茂",   "tw_cn": "聯茂",   "en": "Elite Material",                 "set": ""},
+    "台燿":   {"thai_cn": "台燿",   "tw_cn": "台燿",   "en": "Taiwan Union Technology",        "set": ""},
 }
 
 # 向下相容：產生 VIP 查詢字串
@@ -121,13 +135,9 @@ RELEVANCE_KEYWORDS = {
     ],
     "vip": [
         "泰國", "泰", "thailand", "thai", "bangkok", "曼谷",
-        "台達電", "delta electronics", "臻鼎", "zhen ding",
-        "欣興", "unimicron", "華通", "compeq",
-        "金像電", "gold circuit", "定穎", "dynamic holding",
-        "健鼎", "tripod", "燿華", "unitech",
-        "鴻海", "foxconn", "英業達", "inventec", "garmin",
         "pcb", "印刷電路板", "台商",
-    ],
+    ] + [name for info in COMPANY_MAP.values()
+         for name in [info["thai_cn"], info["tw_cn"], info["en"]]],
 }
 
 
