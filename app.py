@@ -238,20 +238,25 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     news_items_for_json = []
 
     if search_mode == "custom":
-        instruction_prompt = f"針對關鍵字【{custom_keyword}】，請撰寫一份深度分析報告：1. 重點摘要 2. 市場影響 3. 機會與風險。"
+        topic_desc = f"關鍵字【{custom_keyword}】"
     elif search_mode == "macro":
-        instruction_prompt = f"請分析【{days_label} 泰國整體與台泰關係】：1. 泰國政經局勢 2. 台泰雙邊互動。"
+        topic_desc = f"{days_label} 泰國整體與台泰關係"
     elif search_mode == "industry":
-        instruction_prompt = f"請分析【{days_label} 泰國 PCB 與電子製造】：1. 產業趨勢 2. 供應鏈動態。"
+        topic_desc = f"{days_label} 泰國 PCB 與電子製造"
     elif search_mode == "vip":
-        instruction_prompt = f"請分析【{days_label} 泰國重點台商】：1. 個股動態 2. 投資訊號。"
+        topic_desc = f"{days_label} 泰國重點台商"
 
-    output_text = f"""
-請扮演一位資深的「產業分析師」。
-{instruction_prompt}
-請用**繁體中文**，並以 **Markdown** 條列式輸出，風格需專業且易讀。
+    output_text = f"""請扮演一位資深的「產業分析師」，分析【{topic_desc}】。
 
-========= 以下是新聞資料庫 ({datetime.now().strftime('%Y-%m-%d')}) =========
+## 任務
+1. 從以下新聞標題中，挑出 **10-15 則最重要的新聞**，說明為何重要
+2. 歸納本期 **3-5 大關鍵趨勢**
+3. 提出 **機會與風險** 評估
+4. 如需確認某則新聞的詳細內容，可參考文末「參考連結」區段
+
+請用**繁體中文**，以 **Markdown** 條列式輸出，風格需專業且易讀。
+
+========= 以下是新聞標題庫 ({datetime.now().strftime('%Y-%m-%d')}) =========
 """
     
     seen_titles = set()
@@ -309,7 +314,8 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
         except Exception:
             return "unknown"
 
-    DAILY_PROMPT_LIMIT = 10  # 每天每類別最多放入 prompt 的篇數
+    DAILY_PROMPT_LIMIT = 5  # 每天每類別最多放入 prompt 的篇數
+    all_prompt_items = []  # 收集進入 prompt 的文章（用於產生參考連結）
 
     for category, entries in category_entries.items():
         # 依日期排序（新→舊）
@@ -318,30 +324,37 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
         news_items_for_json.extend(entries)
 
         output_text += f"\n## 【{category}】\n"
-        if entries:
-            if search_mode == "custom":
-                # 自訂搜尋不限制
-                for item in entries:
-                    output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
-            else:
-                # 逐日取樣：每天最多 DAILY_PROMPT_LIMIT 篇
-                daily_count = {}
-                prompt_count = 0
-                skipped_count = 0
-                for item in entries:
-                    day = _get_date_str(item)
-                    daily_count.setdefault(day, 0)
-                    if daily_count[day] < DAILY_PROMPT_LIMIT:
-                        daily_count[day] += 1
-                        prompt_count += 1
-                        output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
-                    else:
-                        skipped_count += 1
-                if skipped_count > 0:
-                    output_text += f"  ...（另有 {skipped_count} 篇，見下方新聞列表）\n"
-        else:
+        if not entries:
             output_text += "(無相關新聞)\n"
+            continue
 
+        if search_mode == "custom":
+            limit_per_day = len(entries)  # 不限制
+        else:
+            limit_per_day = DAILY_PROMPT_LIMIT
+
+        # 依日期分組輸出（只放標題，不放連結）
+        daily_count = {}
+        current_day = None
+        for item in entries:
+            day = _get_date_str(item)
+            daily_count.setdefault(day, 0)
+            if daily_count[day] >= limit_per_day:
+                continue
+            daily_count[day] += 1
+            # 日期分隔線
+            if day != current_day:
+                current_day = day
+                output_text += f"\n### {day}\n"
+            idx = len(all_prompt_items) + 1
+            output_text += f"- [{item['source']}] {item['title']} [#{idx}]\n"
+            all_prompt_items.append(item)
+
+    # 參考連結區段（放在最後）
+    output_text += "\n========= 標題庫結束 =========\n"
+    output_text += f"\n## 參考連結（共 {len(all_prompt_items)} 則，供查閱詳細內容）\n"
+    for i, item in enumerate(all_prompt_items, 1):
+        output_text += f"[#{i}] {item['link']}\n"
     output_text += "\n========= 資料結束 ========="
     
     # 累積歷史資料邏輯（加檔案鎖防止並發寫入損毀）
