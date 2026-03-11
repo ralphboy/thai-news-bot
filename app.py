@@ -302,6 +302,15 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
         except Exception:
             return 0
 
+    def _get_date_str(item):
+        """取得文章的日期字串（YYYY-MM-DD），用於逐日分組"""
+        try:
+            return parsedate_to_datetime(item["date"]).strftime('%Y-%m-%d')
+        except Exception:
+            return "unknown"
+
+    DAILY_PROMPT_LIMIT = 10  # 每天每類別最多放入 prompt 的篇數
+
     for category, entries in category_entries.items():
         # 依日期排序（新→舊）
         entries.sort(key=_sort_key, reverse=True)
@@ -310,12 +319,26 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
 
         output_text += f"\n## 【{category}】\n"
         if entries:
-            # AI prompt 限制筆數以控制長度，但不影響新聞列表顯示
-            prompt_limit = len(entries) if search_mode == "custom" else 50
-            for item in entries[:prompt_limit]:
-                output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
-            if len(entries) > prompt_limit:
-                output_text += f"  ...（另有 {len(entries) - prompt_limit} 篇，見下方新聞列表）\n"
+            if search_mode == "custom":
+                # 自訂搜尋不限制
+                for item in entries:
+                    output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
+            else:
+                # 逐日取樣：每天最多 DAILY_PROMPT_LIMIT 篇
+                daily_count = {}
+                prompt_count = 0
+                skipped_count = 0
+                for item in entries:
+                    day = _get_date_str(item)
+                    daily_count.setdefault(day, 0)
+                    if daily_count[day] < DAILY_PROMPT_LIMIT:
+                        daily_count[day] += 1
+                        prompt_count += 1
+                        output_text += f"- [{item['date']}] [{item['source']}] {item['title']}\n  連結: {item['link']}\n"
+                    else:
+                        skipped_count += 1
+                if skipped_count > 0:
+                    output_text += f"  ...（另有 {skipped_count} 篇，見下方新聞列表）\n"
         else:
             output_text += "(無相關新聞)\n"
 
