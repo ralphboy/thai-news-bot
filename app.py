@@ -87,8 +87,7 @@ VIP_QUERY_CN = "+OR+".join([c.replace(" ", "+") for c in VIP_COMPANIES_CN])
 
 # 選項映射
 DATE_MAP = {
-    "1天": 1, "3天": 3, "1週": 7, "2週": 14,
-    "1月": 30, "3月": 90, "6月": 180
+    "1天": 1, "3天": 3, "1週": 7, "1月": 30
 }
 
 TOPIC_MAP = {
