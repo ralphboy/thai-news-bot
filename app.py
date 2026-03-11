@@ -257,7 +257,7 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
 1. 從以下新聞標題中，挑出 **10-15 則最重要的新聞**，說明為何重要
 2. 歸納本期 **3-5 大關鍵趨勢**
 3. 提出 **機會與風險** 評估
-4. 如需確認某則新聞的詳細內容，可參考文末「參考連結」區段
+4. 如有特別重要的新聞需要深入了解，請自行上網搜尋該新聞的詳細內容
 
 請用**繁體中文**，以 **Markdown** 條列式輸出，風格需專業且易讀。
 
@@ -319,8 +319,7 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
         except Exception:
             return "unknown"
 
-    DAILY_PROMPT_LIMIT = 5  # 每天每類別最多放入 prompt 的篇數
-    all_prompt_items = []  # 收集進入 prompt 的文章（用於產生參考連結）
+    DAILY_PROMPT_LIMIT = 10  # 每天每類別最多放入 prompt 的篇數
 
     for category, entries in category_entries.items():
         # 依日期排序（新→舊）
@@ -338,7 +337,7 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
         else:
             limit_per_day = DAILY_PROMPT_LIMIT
 
-        # 依日期分組輸出（只放標題，不放連結）
+        # 依日期分組輸出純標題
         daily_count = {}
         current_day = None
         for item in entries:
@@ -347,19 +346,11 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
             if daily_count[day] >= limit_per_day:
                 continue
             daily_count[day] += 1
-            # 日期分隔線
             if day != current_day:
                 current_day = day
                 output_text += f"\n### {day}\n"
-            idx = len(all_prompt_items) + 1
-            output_text += f"- [{item['source']}] {item['title']} [#{idx}]\n"
-            all_prompt_items.append(item)
+            output_text += f"- [{item['source']}] {item['title']}\n"
 
-    # 參考連結區段（放在最後）
-    output_text += "\n========= 標題庫結束 =========\n"
-    output_text += f"\n## 參考連結（共 {len(all_prompt_items)} 則，供查閱詳細內容）\n"
-    for i, item in enumerate(all_prompt_items, 1):
-        output_text += f"[#{i}] {item['link']}\n"
     output_text += "\n========= 資料結束 ========="
     
     # 累積歷史資料邏輯（加檔案鎖防止並發寫入損毀）
