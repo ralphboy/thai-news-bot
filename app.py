@@ -102,53 +102,75 @@ st.markdown(CUSTOM_CSS, unsafe_allow_html=True)
 
 # ================= 3. 爬蟲核心邏輯 =================
 
+def _build_date_filter(date_after_str, date_before_str):
+    """建立單日的日期過濾與排除參數"""
+    exclude_sites = "-site:msn.com+-site:aol.com"
+    return f"after:{date_after_str}+before:{date_before_str}+{exclude_sites}"
+
+
+def _build_sources_for_filter(date_filter, mode, custom_keyword=None, day_label=""):
+    """根據模式與日期過濾條件產生 RSS 來源列表"""
+    sources = []
+    suffix = f" {day_label}" if day_label else ""
+
+    if mode == "custom" and custom_keyword:
+        clean_keyword = custom_keyword.strip().replace(" ", "+")
+        sources.append({
+            "name": f"🔍 深度追蹤: {custom_keyword} (中){suffix}",
+            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
+        })
+        sources.append({
+            "name": f"🔍 深度追蹤: {custom_keyword} (EN){suffix}",
+            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"
+        })
+    elif mode == "macro":
+        sources.extend([
+            {"name": f"🇹🇭 泰國整體 (中){suffix}", "url": f"https://news.google.com/rss/search?q=泰國+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": f"🇹🇭 泰國整體 (EN){suffix}", "url": f"https://news.google.com/rss/search?q=Thailand+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"},
+            {"name": f"🇹🇼 台泰關係 (中){suffix}", "url": f"https://news.google.com/rss/search?q=泰國+台灣+OR+%22台商%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": f"🇹🇼 台泰關係 (EN){suffix}", "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
+        ])
+    elif mode == "industry":
+        sources.extend([
+            {"name": f"🔌 PCB製造 (中){suffix}", "url": f"https://news.google.com/rss/search?q=泰國+%22PCB%22+OR+%22印刷電路板%22+OR+%22電子製造%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": f"🔌 PCB製造 (EN){suffix}", "url": f"https://news.google.com/rss/search?q=Thailand+%22printed+circuit+board%22+OR+%22PCB+manufacturing%22+OR+%22electronics+manufacturing%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
+        ])
+    elif mode == "vip":
+        sources.extend([
+            {"name": f"🏢 台商動態 (中){suffix}", "url": f"https://news.google.com/rss/search?q=泰國+OR+{VIP_QUERY_CN}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
+            {"name": f"🏢 台商動態 (EN){suffix}", "url": f"https://news.google.com/rss/search?q=Thailand+PCB+OR+{VIP_QUERY_EN}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
+        ])
+
+    return sources
+
+
 def get_rss_sources(days, mode="all", custom_keyword=None):
     """
     產生 RSS 來源列表
     :param days: 天數 (int)
+    當天數 > 1 時，逐日拆分請求以避免 Google News RSS 只回傳最近結果的問題
     """
-    sources = []
+    # 短天數 (1天) 不需拆分，直接用單一區間
+    if days <= 1:
+        date_after = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
+        date_before = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
+        date_filter = _build_date_filter(date_after, date_before)
+        return _build_sources_for_filter(date_filter, mode, custom_keyword)
 
-    # 使用 after:/before: 日期參數取代 when:Xd，過濾更精確
-    date_after = (datetime.now() - timedelta(days=days)).strftime('%Y-%m-%d')
-    date_before = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
-    # 排除聚合轉載平台（會將舊文以新日期重新上架，造成時間範圍失準）
-    exclude_sites = "-site:msn.com+-site:aol.com"
-    date_filter = f"after:{date_after}+before:{date_before}+{exclude_sites}"
+    # 天數 > 1：逐日拆分，每天各自發請求
+    all_sources = []
+    for i in range(days):
+        day_start = datetime.now() - timedelta(days=days - i)
+        day_end = day_start + timedelta(days=1)
+        date_after = day_start.strftime('%Y-%m-%d')
+        date_before = day_end.strftime('%Y-%m-%d')
+        day_label = day_start.strftime('%m/%d')
+        date_filter = _build_date_filter(date_after, date_before)
+        all_sources.extend(
+            _build_sources_for_filter(date_filter, mode, custom_keyword, day_label)
+        )
 
-    # 自訂搜尋模式
-    if mode == "custom" and custom_keyword:
-        clean_keyword = custom_keyword.strip().replace(" ", "+")
-        sources.append({
-            "name": f"🔍 深度追蹤: {custom_keyword} (中)",
-            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"
-        })
-        sources.append({
-            "name": f"🔍 深度追蹤: {custom_keyword} (EN)",
-            "url": f"https://news.google.com/rss/search?q={clean_keyword}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"
-        })
-        return sources
-
-    # 預設模式
-    if mode == "macro":
-        sources.extend([
-            {"name": "🇹🇭 泰國整體 (中)", "url": f"https://news.google.com/rss/search?q=泰國+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🇹🇭 泰國整體 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"},
-            {"name": "🇹🇼 台泰關係 (中)", "url": f"https://news.google.com/rss/search?q=泰國+台灣+OR+%22台商%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🇹🇼 台泰關係 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+Taiwan+OR+%22Taiwanese+investment%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
-        ])
-    elif mode == "industry":
-        sources.extend([
-            {"name": "🔌 PCB製造 (中)", "url": f"https://news.google.com/rss/search?q=泰國+%22PCB%22+OR+%22印刷電路板%22+OR+%22電子製造%22+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🔌 PCB製造 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+%22printed+circuit+board%22+OR+%22PCB+manufacturing%22+OR+%22electronics+manufacturing%22+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
-        ])
-    elif mode == "vip":
-        sources.extend([
-            {"name": "🏢 台商動態 (中)", "url": f"https://news.google.com/rss/search?q=泰國+OR+{VIP_QUERY_CN}+{date_filter}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant"},
-            {"name": "🏢 台商動態 (EN)", "url": f"https://news.google.com/rss/search?q=Thailand+PCB+OR+{VIP_QUERY_EN}+{date_filter}&hl=en-TH&gl=TH&ceid=TH:en"}
-        ])
-
-    return sources
+    return all_sources
 
 def fetch_feed(source):
     """Helper function to fetch a single RSS feed."""
@@ -199,23 +221,28 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     # 平行抓取 RSS
     status_text.text(f"📡 正在平行掃描 {len(sources)} 個來源...")
     
-    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        future_to_source = {executor.submit(fetch_feed, source): source for source in sources}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
+        # 建立 future，並保留原始順序索引
+        futures = []
+        for idx, source in enumerate(sources):
+            future = executor.submit(fetch_feed, source)
+            futures.append((idx, future))
 
-        # 等待所有抓取完成，但按原始來源順序處理（中文在前、英文在後）
-        concurrent.futures.wait(future_to_source.keys())
+        # 等待所有抓取完成
+        concurrent.futures.wait([f for _, f in futures])
 
-        for completed_count, (future, source) in enumerate(future_to_source.items(), 1):
+        # 按原始順序收集結果
+        results = [None] * len(sources)
+        for idx, future in futures:
+            results[idx] = future.result()
+
+        for completed_count, (source, feed) in enumerate(results, 1):
             progress_bar.progress(completed_count / total_steps)
 
-            source, feed = future.result()
-            
             if feed and len(feed.entries) > 0:
-                output_text += f"\n## 【{source['name']}】\n"
-                
                 # 自訂搜尋不設限，預設限制 30 篇
                 limit = len(feed.entries) if search_mode == "custom" else 30
-                
+
                 for entry in feed.entries[:limit]:
                     if entry.title in seen_titles: continue
                     pub_date = entry.published if 'published' in entry else ""
@@ -224,13 +251,13 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
                         continue
                     seen_titles.add(entry.title)
                     source_name = entry.source.title if 'source' in entry else "Google News"
+                    # 去掉日期後綴，用基礎類別名顯示
+                    base_category = source['name'].rsplit(' ', 1)[0] if any(c.isdigit() for c in source['name'].split()[-1]) else source['name']
                     output_text += f"- [{pub_date}] [{source_name}] {entry.title}\n  連結: {entry.link}\n"
                     news_items_for_json.append({
                         "title": entry.title, "link": entry.link, "date": pub_date,
-                        "source": source_name, "category": source['name']
+                        "source": source_name, "category": base_category
                     })
-            else:
-                output_text += f"\n## 【{source['name']}】\n(無相關新聞)\n"
 
     output_text += "\n========= 資料結束 ========="
     
