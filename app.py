@@ -237,14 +237,19 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     sources = get_rss_sources(days_int, search_mode, custom_keyword)
     news_items_for_json = []
 
+    # 計算實際日期範圍，避免「1月」被誤解為「一月份」
+    date_end = datetime.now().strftime('%Y-%m-%d')
+    date_start = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
+    date_range_str = f"近 {days_label}（{date_start} ~ {date_end}）"
+
     if search_mode == "custom":
-        topic_desc = f"關鍵字【{custom_keyword}】"
+        topic_desc = f"關鍵字【{custom_keyword}】{date_range_str}"
     elif search_mode == "macro":
-        topic_desc = f"{days_label} 泰國整體與台泰關係"
+        topic_desc = f"{date_range_str} 泰國整體與台泰關係"
     elif search_mode == "industry":
-        topic_desc = f"{days_label} 泰國 PCB 與電子製造"
+        topic_desc = f"{date_range_str} 泰國 PCB 與電子製造"
     elif search_mode == "vip":
-        topic_desc = f"{days_label} 泰國重點台商"
+        topic_desc = f"{date_range_str} 泰國重點台商"
 
     output_text = f"""請扮演一位資深的「產業分析師」，分析【{topic_desc}】。
 
