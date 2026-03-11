@@ -69,18 +69,22 @@ CUSTOM_CSS = """
 </style>
 """
 
-# VIP 公司清單
-VIP_COMPANIES_EN = [
-    '"Delta Electronics"', '"Zhen Ding"', '"Unimicron"', '"Compeq"', 
-    '"Gold Circuit Electronics"', '"Dynamic Holding"', '"Tripod Technology"', 
-    '"Unitech"', '"Foxconn"', '"Inventec"', '"Garmin"'
-]
+# VIP 公司清單（中英文對照）
+COMPANY_MAP = {
+    "台達電": "Delta Electronics",
+    "臻鼎": "Zhen Ding",
+    "欣興": "Unimicron",
+    "華通": "Compeq",
+    "金像電": "Gold Circuit Electronics",
+    "定穎": "Dynamic Holding",
+    "健鼎": "Tripod Technology",
+    "燿華": "Unitech",
+    "鴻海": "Foxconn",
+    "英業達": "Inventec",
+}
 
-VIP_COMPANIES_CN = [
-    '"台達電"', '"臻鼎"', '"欣興"', '"華通"', 
-    '"金像電"', '"定穎"', '"健鼎"', 
-    '"燿華"', '"鴻海"', '"英業達"', '"Garmin"'
-]
+VIP_COMPANIES_EN = [f'"{en}"' for en in COMPANY_MAP.values()]
+VIP_COMPANIES_CN = [f'"{cn}"' for cn in COMPANY_MAP.keys()]
 
 # 預先計算好查詢字串 (避免在函式內重複計算)
 VIP_QUERY_EN = "+OR+".join([c.replace(" ", "+") for c in VIP_COMPANIES_EN])
@@ -127,6 +131,12 @@ RELEVANCE_KEYWORDS = {
 
 def is_relevant(title, mode, custom_keyword=None):
     """檢查標題是否與搜尋模式相關（至少包含一個關鍵字）"""
+    if mode == "company" and custom_keyword:
+        # 個別台商：標題須含中文名或英文名
+        title_lower = title.lower()
+        cn_name = custom_keyword.lower()
+        en_name = COMPANY_MAP.get(custom_keyword, "").lower()
+        return cn_name in title_lower or en_name in title_lower
     if mode == "custom" and custom_keyword:
         title_lower = title.lower()
         kw = custom_keyword.strip().lower()
@@ -159,7 +169,19 @@ def _build_query_templates(mode, custom_keyword=None):
     """
     templates = []
 
-    if mode == "custom" and custom_keyword:
+    if mode == "company" and custom_keyword:
+        # 個別台商模式：中英文名 + 泰國上下文
+        cn_name = custom_keyword
+        en_name = COMPANY_MAP.get(cn_name, cn_name)
+        cn_query = f"泰國+%22{cn_name}%22+OR+%22{en_name.replace(' ', '+')}%22"
+        en_query = f"Thailand+%22{en_name.replace(' ', '+')}%22+OR+%22{cn_name}%22"
+        templates.extend([
+            {"name": f"🏭 {cn_name} (中)", "query": cn_query,
+             "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
+            {"name": f"🏭 {cn_name} (EN)", "query": en_query,
+             "hl": "en-TH", "gl": "TH", "ceid": "TH:en"},
+        ])
+    elif mode == "custom" and custom_keyword:
         clean_keyword = custom_keyword.strip().replace(" ", "+")
         templates.extend([
             {"name": f"🔍 深度追蹤: {custom_keyword} (中)", "query": clean_keyword,
@@ -261,7 +283,10 @@ def generate_chatgpt_prompt(days_label, days_int, search_mode, custom_keyword=No
     date_start = (datetime.now() - timedelta(days=days_int)).strftime('%Y-%m-%d')
     date_range_str = f"近 {days_label}（{date_start} ~ {date_end}）"
 
-    if search_mode == "custom":
+    if search_mode == "company":
+        en_name = COMPANY_MAP.get(custom_keyword, custom_keyword)
+        topic_desc = f"{date_range_str} {custom_keyword}（{en_name}）泰國動態"
+    elif search_mode == "custom":
         topic_desc = f"關鍵字【{custom_keyword}】{date_range_str}"
     elif search_mode == "macro":
         topic_desc = f"{date_range_str} 泰國整體與台泰關係"
@@ -447,6 +472,7 @@ with tab1:
         if 'search_type' not in st.session_state: st.session_state['search_type'] = None
         if 'search_keyword' not in st.session_state: st.session_state['search_keyword'] = ""
         if 'last_topic' not in st.session_state: st.session_state['last_topic'] = None
+        if 'last_company' not in st.session_state: st.session_state['last_company'] = None
         
         # [Helper] 設定搜尋模式
         def set_search(mode, keyword=""):
@@ -476,21 +502,49 @@ with tab1:
         if topic_selection:
             target_mode = TOPIC_MAP[topic_selection]
             if st.session_state.get('last_topic') != topic_selection:
-                st.session_state['last_topic'] = topic_selection 
+                st.session_state['last_topic'] = topic_selection
+                # 清除台商選取
+                try:
+                    st.session_state['pills_company'] = None
+                except:
+                    pass
+                st.session_state['last_company'] = None
                 set_search(target_mode)
                 st.rerun() 
         
-        # 3. 自訂搜尋
-        st.caption("3. 關鍵字")
-        def handle_custom_search():
-            kw = st.session_state.kw_input
-            if kw:
-                # 清除主題選取 (如果使用 pills)
+        # 3. 個別台商
+        st.caption("3. 個別台商")
+        try:
+            company_selection = st.pills("Company", list(COMPANY_MAP.keys()), label_visibility="collapsed", selection_mode="single", key="pills_company")
+        except AttributeError:
+            company_selection = st.radio("Company", ["(請選擇)"] + list(COMPANY_MAP.keys()), label_visibility="collapsed")
+            if company_selection == "(請選擇)": company_selection = None
+
+        if company_selection:
+            if st.session_state.get('last_company') != company_selection:
+                st.session_state['last_company'] = company_selection
+                # 清除主題與關鍵字選取
                 try:
-                    st.session_state['pills_topic'] = None 
+                    st.session_state['pills_topic'] = None
                 except:
                     pass
                 st.session_state['last_topic'] = None
+                set_search("company", company_selection)
+                st.rerun()
+
+        # 4. 自訂搜尋
+        st.caption("4. 關鍵字")
+        def handle_custom_search():
+            kw = st.session_state.kw_input
+            if kw:
+                # 清除主題與台商選取
+                try:
+                    st.session_state['pills_topic'] = None
+                    st.session_state['pills_company'] = None
+                except:
+                    pass
+                st.session_state['last_topic'] = None
+                st.session_state['last_company'] = None
                 set_search("custom", kw)
 
         c_in, c_btn = st.columns([3, 1], gap="small")
@@ -522,11 +576,17 @@ with tab1:
                 <strong>💡 系統說明：</strong><br>
                 1. <b>泰國政經</b>：政經局勢與台泰關係。<br>
                 2. <b>電子產業</b>：PCB、伺服器與電子製造。<br>
-                3. <b>重點台商</b>：鎖定 11 大指標台廠動態。
+                3. <b>重點台商</b>：鎖定 10 大指標台廠動態。<br>
+                4. <b>個別台商</b>：單一台商中英文深度搜尋。
             </div>
             """, unsafe_allow_html=True)
 
         # 執行搜尋
+        elif s_type == "company" and s_kw:
+            en_name = COMPANY_MAP.get(s_kw, s_kw)
+            with st.spinner(f"正在搜尋 {s_kw}（{en_name}）泰國動態..."):
+                prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "company", s_kw)
+                display_results(prompt, news_list)
         elif s_type == "custom" and s_kw:
             with st.spinner(f"正在全網搜索 {s_kw}..."):
                 prompt, news_list = generate_chatgpt_prompt(selected_label, days_int, "custom", s_kw)
