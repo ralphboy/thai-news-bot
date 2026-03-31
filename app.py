@@ -8,6 +8,7 @@ import os
 import concurrent.futures
 from collections import OrderedDict
 import html
+import re
 import fcntl
 
 # ================= 1. 頁面設定 (必須放第一行) =================
@@ -156,13 +157,16 @@ def is_relevant(title, mode, custom_keyword=None):
     if mode == "custom" and custom_keyword:
         title_lower = title.lower()
         kw = custom_keyword.strip().lower()
-        # 完整關鍵字比對
+        # 完整關鍵字比對（優先且最精確）
         if kw in title_lower:
             return True
-        # 多詞比對：以空格拆分，每個詞都須出現（如 "Delta Electronics"）
+        # 多詞比對：詞必須相鄰出現，避免 "Siam...AI" 散落匹配
         words = kw.split()
-        if len(words) >= 2 and all(w in title_lower for w in words):
-            return True
+        if len(words) >= 2:
+            # 允許詞間有少量非字母字元（如 "Siam-AI" 或 "Siam's AI"）
+            pattern = r'\b' + r'[\s\-\']{0,3}'.join(re.escape(w) for w in words) + r'\b'
+            if re.search(pattern, title_lower):
+                return True
         # 中文逐字比對：僅對非 ASCII 字元拆分（如「泰達電」→「泰」「達」「電」）
         cjk_chars = [c for c in kw if ord(c) > 127]
         if len(cjk_chars) >= 2:
@@ -215,7 +219,12 @@ def _build_query_templates(mode, custom_keyword=None):
              "hl": "en-TH", "gl": "TH", "ceid": "TH:en"},
         ])
     elif mode == "custom" and custom_keyword:
-        clean_keyword = custom_keyword.strip().replace(" ", "+")
+        kw_stripped = custom_keyword.strip()
+        # 多詞關鍵字用引號包裹，確保搜尋完整片語（如 "Siam AI"）
+        if " " in kw_stripped:
+            clean_keyword = f"%22{kw_stripped.replace(' ', '+')}%22"
+        else:
+            clean_keyword = kw_stripped.replace(" ", "+")
         templates.extend([
             {"name": f"🔍 深度追蹤: {custom_keyword} (中)", "query": clean_keyword,
              "hl": "zh-TW", "gl": "TW", "ceid": "TW:zh-Hant"},
