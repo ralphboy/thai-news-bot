@@ -148,12 +148,27 @@ def is_relevant(title, mode, custom_keyword=None):
         # 個別台商：標題須含任一名稱變體
         title_lower = title.lower()
         info = COMPANY_MAP.get(custom_keyword, {})
+        # 中英文名稱用子字串比對（夠具體）
         names = [
             info.get("thai_cn", ""), info.get("tw_cn", ""),
-            info.get("en", ""), info.get("set", ""),
+            info.get("en", ""),
             custom_keyword,
         ]
-        return any(n and n.lower() in title_lower for n in names)
+        if any(n and n.lower() in title_lower for n in names):
+            return True
+        # SET 代碼用完整單詞比對，避免 "DELTA" 匹配到 Delta Airlines
+        set_ticker = info.get("set", "")
+        if set_ticker and re.search(r'\b' + re.escape(set_ticker.lower()) + r'\b', title_lower):
+            # 額外要求標題也含泰國/PCB 相關詞，排除純美股/其他國家新聞
+            thai_patterns = [
+                r'\bthai(?:land)?\b', r'\bbangkok\b', r'\bset[:\s]',  # 英文泰國詞
+                r'\bpcb\b', r'電路板',                                  # PCB 產業
+                "泰", "曼谷", "泰銖",                                    # 中文泰國詞
+            ]
+            if any(re.search(p, title_lower) if '\\' in p else p in title_lower
+                   for p in thai_patterns):
+                return True
+        return False
     if mode == "custom" and custom_keyword:
         title_lower = title.lower()
         kw = custom_keyword.strip().lower()
